@@ -1,6 +1,7 @@
 from service import get_api_key, llama_8B_instruct, generate
 
 from typing import Union
+
 import uvicorn
 from fastapi import FastAPI
 from pydantic import BaseModel
