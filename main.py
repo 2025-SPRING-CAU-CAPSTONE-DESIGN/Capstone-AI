@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from llama_cpp import Llama
 
-# from googleapiclient import discovery
+from googleapiclient import discovery
 
 
 API_KEY = get_api_key()
@@ -31,7 +31,6 @@ app.add_middleware(
 
 model, tokenizer = llama_8B_instruct()
 
-system_prompt = 'Please change the input sentence to a sentence that is pureed for children.'
 
 llm = Llama(
     model_path='./model/llama/unsloth.Q8_0.gguf',
@@ -43,13 +42,13 @@ llm = Llama(
 )
 
 
-# client = discovery.build(
-#   "commentanalyzer",
-#   "v1alpha1",
-#   developerKey=API_KEY,
-#   discoveryServiceUrl="https://commentanalyzer.googleapis.com/$discovery/rest?version=v1alpha1",
-#   static_discovery=False,
-# )
+client = discovery.build(
+  "commentanalyzer",
+  "v1alpha1",
+  developerKey=API_KEY,
+  discoveryServiceUrl="https://commentanalyzer.googleapis.com/$discovery/rest?version=v1alpha1",
+  static_discovery=False,
+)
 
 class PromptRequest(BaseModel):
     instruction: Union[str, None] = 'You are a kind and creative fairy tale writer for children. Your goal is to write heartwarming, imaginative, and age-appropriate stories that are safe for kids. Do not include any harmful, violent, sexual, threatening, or inappropriate language. Your stories must always be suitable for young children. All your responses must be written in Korean. You must respond with only 1 or 2 sentences per answer, no more. Continue the story naturally based on the user’s input.'
@@ -63,7 +62,7 @@ def read_root():
 @app.post("/generate")
 async def generate_text(request: PromptRequest):
     
-    output_text = generate(request, llm)
+    output_text = generate(request, llm, client, model, tokenizer)
     return {"response": output_text}
 
 if __name__ == "__main__":
