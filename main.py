@@ -1,6 +1,6 @@
 from typing import Union
-import uvicorn
 
+import uvicorn
 from fastapi import FastAPI
 from llama_cpp import Llama
 from pydantic import BaseModel
