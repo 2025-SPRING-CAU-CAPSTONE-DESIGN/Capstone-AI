@@ -8,8 +8,9 @@ from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 import transformers
+from sentence_transformers import SentenceTransformer
 
-from llama_cpp import Llama
+import faiss
 
 from googleapiclient import discovery
 
@@ -36,8 +37,9 @@ llm = transformers.pipeline(
     "text-generation",
     model="meta-llama/Llama-3.2-3B-Instruct",
     model_kwargs={"torch_dtype": torch.bfloat16},
-    device_map="auto",
+    device_map={"": "cuda:0"},
 )
+
 
 
 client = discovery.build(
@@ -49,9 +51,11 @@ client = discovery.build(
 )
 
 class PromptRequest(BaseModel):
+    user_id: int = 0
+    book_num: int = 0
     instruction: Union[str, None] = 'All answers must be written in Korean. You are a kind and creative fairy tale writer for children. Do not include harmful, violent, sexually threatening, or inappropriate language. Your story should always be appropriate for young children. All answers must be kind and creative fairy tale writers for children. All answers must be written in Korean. Follow user\'s input and continue the story naturally.'
     input: Union[str, None] = ""  # optional
-    max_new_tokens: int = 512
+    max_new_tokens: int = 200
 
 @app.get("/")
 def read_root():
