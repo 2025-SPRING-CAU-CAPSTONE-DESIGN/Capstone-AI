@@ -1,11 +1,13 @@
 from service import get_api_key, llama_8B_instruct, generate
 
 from typing import Union
+import torch
 
 import uvicorn
 from fastapi import FastAPI
 from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
+import transformers
 
 from llama_cpp import Llama
 
@@ -29,16 +31,12 @@ app.add_middleware(
 )
 
 
-model, tokenizer = llama_8B_instruct()
 
-
-llm = Llama(
-    model_path='./model/llama/unsloth.Q8_0.gguf',
-    n_gpu_layers=32,
-    n_ctx=2048,
-    n_batch=512,
-    f16_kv=True,
-    verbose=False
+llm = transformers.pipeline(
+    "text-generation",
+    model="meta-llama/Llama-3.2-3B-Instruct",
+    model_kwargs={"torch_dtype": torch.bfloat16},
+    device_map="auto",
 )
 
 
@@ -51,7 +49,7 @@ client = discovery.build(
 )
 
 class PromptRequest(BaseModel):
-    instruction: Union[str, None] = 'You are a kind and creative fairy tale writer for children. Your goal is to write heartwarming, imaginative, and age-appropriate stories that are safe for kids. Do not include any harmful, violent, sexual, threatening, or inappropriate language. Your stories must always be suitable for young children. All your responses must be written in Korean. You must respond with only 1 or 2 sentences per answer, no more. Continue the story naturally based on the user’s input.'
+    instruction: Union[str, None] = 'All answers must be written in Korean. You are a kind and creative fairy tale writer for children. Do not include harmful, violent, sexually threatening, or inappropriate language. Your story should always be appropriate for young children. All answers must be kind and creative fairy tale writers for children. All answers must be written in Korean. Follow user\'s input and continue the story naturally.'
     input: Union[str, None] = ""  # optional
     max_new_tokens: int = 512
 
@@ -62,7 +60,7 @@ def read_root():
 @app.post("/generate")
 async def generate_text(request: PromptRequest):
     
-    output_text = generate(request, llm, client, model, tokenizer)
+    output_text = generate(request, llm, client)
     return {"response": output_text}
 
 if __name__ == "__main__":

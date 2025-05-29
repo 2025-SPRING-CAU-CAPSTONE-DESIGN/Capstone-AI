@@ -28,54 +28,28 @@ class PromptRequest(BaseModel):
     input: Union[str, None] = ""  # optional
     max_new_tokens: int = 512
 
-def generate(request: PromptRequest, llm, client, model, tokenizer):
+def generate(request: PromptRequest, llm, client):
     
-    formatted_prompt = alpaca_prompt().format(
-        instruction=request.instruction.strip(),
-        input=request.input.strip() if request.input else ""
-    )
+    formatted_prompt = [
+        {"role": "system", "content": request.instruction},
+        {"role": "user", "content": request.input}
+    ]
     
     response = llm(
         formatted_prompt,
-        max_tokens=request.max_new_tokens,
-        temperature=0.9,
-        top_p=0.95,
-        top_k=50,
-        stop=["###", "</s>", "<|endoftext|>"]  # 응답 깔끔하게 자르기 위한 stop token
+        max_new_tokens=request.max_new_tokens,
+        do_sample=True,
+        temperature=0.7,
+        top_p=0.9,
     )
 
-    output_text = response["choices"][0]["text"].strip()
-
+    output_text = response[0]["generated_text"][-1]['content']
+    sentences = output_text.strip().split(". ")
+    output_text = ". ".join(sentences[:2]).strip()
     if output_text == '':
         output_text = '서버에 문제가 생겼습니다.'
     else:
-        # analyze_request = {
-        #     'comment': { 'text' : output_text},
-        #     'requestedAttributes': {'TOXICITY': {}},
-        #     'languages': ['ko']
-        # }
-
-        # toxicity_res = client.comments().analyze(body=analyze_request).execute()
-        # if toxicity_res['attributeScores']['TOXICITY']['spanScores'][0]['score']['value'] > 0.5:
-        #     messages = [
-        #         {'role': 'system', 'content': system_prompt},
-        #         {'role': 'user', 'content': output_text}
-        #     ]
-        #     prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-
-        #     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-        #     input_length = inputs["input_ids"].shape[1]
-
-        #     outputs = model.generate(
-        #         **inputs,
-        #         max_new_tokens=512,
-        #         do_sample=True,
-        #         temperature=0.7,
-        #         pad_token_id=tokenizer.eos_token_id,
-        #     )
-        #     print('\n====================================순화된 내용\n')
-        #     print(tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True))
-        #     output_text = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True)
-        output_text = api(client, model, tokenizer, output_text)
+        # output_text = api(client, llm, output_text)
+        print('a')
 
     return output_text
