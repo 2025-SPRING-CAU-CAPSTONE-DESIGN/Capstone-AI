@@ -2,6 +2,12 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 from typing import Union
 from pydantic import BaseModel
 from api import api
+from sentence_transformers import SentenceTransformer
+import faiss
+import numpy as np
+from deep_translator import GoogleTranslator
+import openai
+
 
 def llama_8B_instruct():
     tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B-Instruct")
@@ -22,60 +28,94 @@ def alpaca_prompt():
 
 """
     return template
+embedder = SentenceTransformer("all-MiniLM-L6-v2")
+index = faiss.IndexIDMap(faiss.IndexFlatL2(384))
+chunks = []
+all_chunk_texts = {}
+all_indexes = {}
+all_deques = {}
+chunk_texts = {}
+def add_chunk(user_id, book_num, text):
+    key = (user_id, book_num)
+    if key not in all_chunk_texts:
+        all_chunk_texts[key] = {}
+        all_indexes[key] = faiss.IndexIDMap(faiss.IndexFlatL2(384))
+    chunk_texts = all_chunk_texts[key]
+    index = all_indexes[key]
+    if text in chunk_texts.values():
+        return
+    chunk_id = len(chunk_texts)
+    chunk_embedding = embedder.encode([text])
+    index.add_with_ids(chunk_embedding, np.array([chunk_id]))
+    chunk_texts[chunk_id] = text
 
+def retrieve_relevant_chunks(user_id, book_num, query, top_k=3):
+    key = (user_id, book_num)
+    if key not in all_indexes:
+        return []
+    index = all_indexes[key]
+    chunk_texts = all_chunk_texts[key]
+    query_embedding = embedder.encode([query]).astype("float32")
+    D, I = index.search(query_embedding, top_k)
+    sorted_ids = sorted(I[0])
+    return [chunk_texts[i] for i in sorted_ids if i in chunk_texts]
 class PromptRequest(BaseModel):
-    instruction: Union[str, None] = 'You are a kind and creative fairy tale writer for children. Your goal is to write heartwarming, imaginative, and age-appropriate stories that are safe for kids. Do not include any harmful, violent, sexual, threatening, or inappropriate language. Your stories must always be suitable for young children. All your responses must be written in Korean. You must respond with only 1 or 2 sentences per answer, no more. Continue the story naturally based on the user’s input.'
+    user_id: int = 0
+    book_num: int = 0
+    # instruction: Union[str, None] = '당신은 어린이를 위한 친절하고 창의적인 동화 작가입니다. 해롭거나 폭력적이거나 성적으로 위협적이거나 부적절한 언어는 포함하지 마세요. 당신의 이야기는 항상 어린 아이들에게 적합해야 합니다. 모든 답변은 친절하고 창의적인 어린이 동화 작가여야 합니다. 모든 답변은 한국어로 작성되어야 합니다. 사용자의 의견을 따르고 자연스럽게 이야기를 이어갑니다.'
     input: Union[str, None] = ""  # optional
-    max_new_tokens: int = 512
+    max_new_tokens: int = 200
 
-def generate(request: PromptRequest, llm, client, model, tokenizer):
-    
-    formatted_prompt = alpaca_prompt().format(
-        instruction=request.instruction.strip(),
-        input=request.input.strip() if request.input else ""
+openai.api_key = ''
+
+def get_completion(prompt, model="gpt-4o-mini"):
+    messages = [
+        {"role": "system", "content": "You do not change the content and change the prompt to make it feel naturally assimilated."},
+        {"role": "user", "content": prompt}
+    ]
+    response = openai.ChatCompletion.create(
+        model=model,
+        messages=messages,
+        temperature=0,
     )
-    
+    return response.choices[0].message["content"]
+
+def generate(request: PromptRequest, llm, client):
+    retrieve_chunks = retrieve_relevant_chunks(request.user_id, request.book_num, request.input)
+    print(retrieve_chunks)
+    add_chunk(request.user_id, request.book_num, request.input)
+    input_conv = ""
+    for i in retrieve_chunks:
+        input_conv += i
+    input_conv += request.input
+    formatted_prompt = [
+        {"role": "system", "content": ' You are a kind and creative fairy tale writer for children. Do not include harmful, violent, sexually threatening, or inappropriate language. Your story should always be appropriate for young children. All answers must be kind and creative fairy tale writers for children. All answers must be written in Korean. Follow user\'s input and continue the story naturally.'},
+        {"role": "user", "content": input_conv}
+    ]
+    print(input_conv)
     response = llm(
         formatted_prompt,
-        max_tokens=request.max_new_tokens,
-        temperature=0.9,
-        top_p=0.95,
-        top_k=50,
-        stop=["###", "</s>", "<|endoftext|>"]  # 응답 깔끔하게 자르기 위한 stop token
+        max_new_tokens=request.max_new_tokens,
+        do_sample=True,
+        temperature=0.1,
+        top_p=0.9,
     )
 
-    output_text = response["choices"][0]["text"].strip()
-
+    output_text = response[0]["generated_text"][-1]['content']
+    sentences = output_text.strip().split(".")
+    if sentences[0] == sentences[1]:
+        output_text = sentences[0]
+    else:
+        output_text = ". ".join(sentences[:2]).strip()
     if output_text == '':
         output_text = '서버에 문제가 생겼습니다.'
     else:
-        # analyze_request = {
-        #     'comment': { 'text' : output_text},
-        #     'requestedAttributes': {'TOXICITY': {}},
-        #     'languages': ['ko']
-        # }
-
-        # toxicity_res = client.comments().analyze(body=analyze_request).execute()
-        # if toxicity_res['attributeScores']['TOXICITY']['spanScores'][0]['score']['value'] > 0.5:
-        #     messages = [
-        #         {'role': 'system', 'content': system_prompt},
-        #         {'role': 'user', 'content': output_text}
-        #     ]
-        #     prompt = tokenizer.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
-
-        #     inputs = tokenizer(prompt, return_tensors="pt").to(model.device)
-        #     input_length = inputs["input_ids"].shape[1]
-
-        #     outputs = model.generate(
-        #         **inputs,
-        #         max_new_tokens=512,
-        #         do_sample=True,
-        #         temperature=0.7,
-        #         pad_token_id=tokenizer.eos_token_id,
-        #     )
-        #     print('\n====================================순화된 내용\n')
-        #     print(tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True))
-        #     output_text = tokenizer.decode(outputs[0][input_length:], skip_special_tokens=True)
-        output_text = api(client, model, tokenizer, output_text)
+        # output_text = api(client, llm, output_text)
+        print('a')
+    output_text += "."
+    output_text = get_completion(output_text)
+    print(output_text)
+    add_chunk(request.user_id, request.book_num, output_text)
+    
 
     return output_text
