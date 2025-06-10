@@ -7,7 +7,7 @@ import faiss
 import numpy as np
 from deep_translator import GoogleTranslator
 import openai
-
+from story import random_story
 
 def llama_8B_instruct():
     tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.1-8B-Instruct")
@@ -81,43 +81,50 @@ def get_completion(prompt, model="gpt-4o-mini"):
     return response.choices[0].message["content"]
 
 def generate(request: PromptRequest, llm, client, is_suggestion=False):
-    retrieve_chunks = retrieve_relevant_chunks(request.user_id, request.book_num, request.input)
-    print(retrieve_chunks)
-    add_chunk(request.user_id, request.book_num, request.input)
-    input_conv = ""
-    for i in retrieve_chunks:
-        input_conv += i
-    input_conv += request.input
     formatted_prompt = []
     if is_suggestion:
-        formatted_prompt = [
-            {"role": "system", "content": 'You are a kind and creative fairy tale writer for children. Do not include harmful, violent, sexually threatening, or inappropriate language. Your story should always be appropriate for young children. All answers must be kind and creative fairy tale writers for children. All answers must be written in Korean.'},
-            {"role": "user", "content": 'Please recommend the first fairy tale in 2 sentences.'}
-        ]
+        # formatted_prompt = [
+        #     {"role": "system", "content": 'You are a kind and creative fairy tale writer for children. Do not include harmful, violent, sexually threatening, or inappropriate language. Your story should always be appropriate for young children. All answers must be kind and creative fairy tale writers for children. All answers must be written in Korean. You have to write it in two sentences.'},
+        #     {"role": "user", "content": 'Throw a fairy tale as a theme in 2 sentences.'}
+        # ]
+        # response = llm(
+        #     formatted_prompt,
+        #     max_new_tokens=request.max_new_tokens,
+        #     do_sample=True,
+        #     temperature=0.1,
+        #     top_p=0.9,
+        # )
+        output_text = random_story()
     else:
+        retrieve_chunks = retrieve_relevant_chunks(request.user_id, request.book_num, request.input)
+        print(retrieve_chunks)
+        add_chunk(request.user_id, request.book_num, request.input)
+        input_conv = ""
+        for i in retrieve_chunks:
+            input_conv += i
+        input_conv += request.input
         formatted_prompt = [
             {"role": "system", "content": 'You are a kind and creative fairy tale writer for children. Do not include harmful, violent, sexually threatening, or inappropriate language. Your story should always be appropriate for young children. All answers must be kind and creative fairy tale writers for children. All answers must be written in Korean. Follow user\'s input and continue the story naturally.'},
             {"role": "user", "content": input_conv}
         ]
-    print(input_conv)
-    response = llm(
-        formatted_prompt,
-        max_new_tokens=request.max_new_tokens,
-        do_sample=True,
-        temperature=0.1,
-        top_p=0.9,
-    )
+        response = llm(
+            formatted_prompt,
+            max_new_tokens=request.max_new_tokens,
+            do_sample=True,
+            temperature=0.1,
+            top_p=0.9,
+        )
 
-    output_text = response[0]["generated_text"][-1]['content']
-    sentences = output_text.strip().split(".")
-    if sentences[0] == sentences[1]:
-        output_text = sentences[0]
-    else:
-        output_text = ". ".join(sentences[:2]).strip()
-    if output_text == '':
-        output_text = '서버에 문제가 생겼습니다.'
-    output_text += "."
-    output_text = get_completion(output_text)
+        output_text = response[0]["generated_text"][-1]['content']
+        sentences = output_text.strip().split(".")
+        if sentences[0] == sentences[1]:
+            output_text = sentences[0]
+        else:
+            output_text = ". ".join(sentences[:2]).strip()
+        if output_text == '':
+            output_text = '서버에 문제가 생겼습니다.'
+        output_text += "."
+        output_text = get_completion(output_text)
     print(output_text)
     add_chunk(request.user_id, request.book_num, output_text)
     

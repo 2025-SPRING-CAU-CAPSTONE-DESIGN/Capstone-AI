@@ -72,9 +72,8 @@ async def generate_text(request: PromptRequest):
     output_text = generate(request, llm, client, is_suggestion=False)
     return {"response": output_text}
 
-@app.get("/suggestions")
+@app.post("/suggestions")
 async def get_suggestions(request: SuggestionRequest):
-    request.input = ""
     output_text = generate(request, llm, client, is_suggestion=True)
     return {"response": output_text}
 

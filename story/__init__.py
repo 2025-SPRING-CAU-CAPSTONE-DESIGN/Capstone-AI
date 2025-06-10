@@ -1,0 +1,1 @@
+from .conversation import random_story
