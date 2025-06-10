@@ -57,6 +57,11 @@ class PromptRequest(BaseModel):
     input: Union[str, None] = ""  # optional
     max_new_tokens: int = 200
 
+class SuggestionRequest(BaseModel):
+    user_id: int = 0
+    book_num: int = 0
+    max_new_tokens: int = 200
+
 @app.get("/")
 def read_root():
     return {"Hello": "World"}
@@ -64,7 +69,13 @@ def read_root():
 @app.post("/generate")
 async def generate_text(request: PromptRequest):
     
-    output_text = generate(request, llm, client)
+    output_text = generate(request, llm, client, is_suggestion=False)
+    return {"response": output_text}
+
+@app.get("/suggestions")
+async def get_suggestions(request: SuggestionRequest):
+    request.input = ""
+    output_text = generate(request, llm, client, is_suggestion=True)
     return {"response": output_text}
 
 if __name__ == "__main__":
